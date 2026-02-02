@@ -3,105 +3,70 @@ import pandas as pd
 import time
 from datetime import datetime
 from binance.client import Client
-import sqlite3
 
-# --- 1. 初始化與代號定義 ---
-# P1: 幣對清單 / P2: 大額成交 / P3: 爆倉量 / B2: 持倉分析
-st.set_page_config(page_title="Binance Whale Tracker", layout="wide")
-st.title("🐋 巨鯨追蹤儀 (Whale & OI Tracker)")
+# 設定區
+st.set_page_config(page_title="Whale Tracker v1.0", layout="wide")
 
-# 請在此輸入您的 API Key (僅讀取權限即可)
-# 建議使用 streamlit secrets 或環境變數
-API_KEY = ""
-API_SECRET = ""
-client = Client(API_KEY, API_SECRET)
-
-# 初始化數據庫 (用於週六數據歸屬)
-def init_db():
-    conn = sqlite3.connect('whale_data.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS saturday_trades
-                 (timestamp TEXT, symbol TEXT, price REAL, amount REAL, oi REAL, type TEXT)''')
-    conn.commit()
-    return conn
-
-# --- 2. 核心邏輯層：判斷進出貨 ---
-def analyze_whale_behavior(prev_oi, curr_oi, trade_type):
-    """
-    底層邏輯：
-    - OI上升 + 主動買入 = 巨鯨進貨建倉
-    - OI下降 + 主動買入 = 空頭爆倉/平倉
-    """
-    if curr_oi > prev_oi:
-        return "🔥 巨鯨建倉 (持有中)" if trade_type == "BUY" else "⚠️ 巨鯨開空"
-    else:
-        return "收割完成 (正在出貨/平倉)"
-
-# --- 3. 前端介面：搜尋欄與監控配置 ---
+# 搜尋欄整合
 with st.sidebar:
-    st.header("🔍 監控配置")
-    target_symbol = st.text_input("輸入監控幣對 (例如: BTCUSDT)", value="BTCUSDT").upper()
-    whale_threshold = st.number_input("巨鯨成交門檻 (USDT)", value=50000)
-    monitor_switch = st.button("開始監控")
+    st.title("🔍 參數設定")
+    symbol = st.text_input("輸入幣對 (例如 BTCUSDT)", "BTCUSDT").upper()
+    threshold = st.number_input("巨鯨成交門檻 (USDT)", 50000)
+    api_key = st.text_input("Binance API Key", type="password")
+    api_secret = st.text_input("Binance API Secret", type="password")
+    run = st.toggle("啟動監控")
 
-# --- 4. 執行循環：每 3 秒發送 3 封包 ---
-if monitor_switch:
+# 核心計算邏輯 (B2 + P2)
+def fetch_data():
+    client = Client(api_key, api_secret)
+    
+    # 封包 1 & 2: 成交與持倉 (P2 + B2)
+    trades = client.futures_recent_trades(symbol=symbol, limit=5)
+    oi = client.futures_open_interest(symbol=symbol)
+    
+    # 封包 3: 爆倉 (P3)
+    liq = client.futures_get_all_liquidation_orders(symbol=symbol, limit=5)
+    
+    return trades, oi, liq
+
+if run and api_key and api_secret:
     placeholder = st.empty()
-    prev_oi = 0
-    conn = init_db()
-
+    last_oi = 0
+    
     while True:
         try:
-            # --- 封包 1: 抓取市場成交量 (P2) ---
-            trades = client.futures_recent_trades(symbol=target_symbol, limit=10)
-            df_trades = pd.DataFrame(trades)
-            # 計算最新一筆大單
-            last_price = float(df_trades['price'].iloc[-1])
-            last_qty = float(df_trades['qty'].iloc[-1])
-            last_value = last_price * last_qty
-            is_buyer_maker = df_trades['isBuyerMaker'].iloc[-1]
-            trade_dir = "SELL" if is_buyer_maker else "BUY"
-
-            # --- 封包 2: 抓取持倉量 (B2) ---
-            oi_data = client.futures_open_interest(symbol=target_symbol)
-            curr_oi = float(oi_data['openInterest'])
-
-            # --- 封包 3: 抓取爆倉數據 (P3 - 模擬抓取最新強平) ---
-            # 註：完整 P3 建議串接 WebSocket，此處以 API 獲取最新狀態
-            liq_data = client.futures_get_all_liquidation_orders(symbol=target_symbol, limit=1)
+            trades, oi, liq = fetch_data()
+            curr_oi = float(oi['openInterest'])
+            price = float(trades[-1]['price'])
+            qty = float(trades[-1]['qty'])
+            vol = price * qty
             
-            # --- 時間處理：週六歸屬邏輯 ---
-            now = datetime.now()
-            is_saturday = (now.weekday() == 5) # 5 代表週六
+            # 判斷週六歸屬
+            is_sat = datetime.utcnow().weekday() == 5
             
-            if is_saturday and last_value >= whale_threshold:
-                # 將週六的大額數據存入資料庫
-                c = conn.cursor()
-                c.execute("INSERT INTO saturday_trades VALUES (?,?,?,?,?,?)", 
-                          (now.isoformat(), target_symbol, last_price, last_value, curr_oi, trade_dir))
-                conn.commit()
-
-            # --- 行為判斷 ---
-            status = analyze_whale_behavior(prev_oi, curr_oi, trade_dir)
-            
-            # --- 儀表板顯示 ---
             with placeholder.container():
-                col1, col2, col3 = st.columns(3)
-                col1.metric("當前價格", f"${last_price}")
-                col2.metric("持倉量 (OI)", f"{curr_oi}", f"{curr_oi - prev_oi:.2f}")
-                col3.metric("最近成交額", f"${last_value:,.2f}")
+                st.write(f"### 正在監控: {symbol} " + ("(📅 週六模式)" if is_sat else ""))
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("當前價格", f"${price}")
+                c2.metric("持倉量 (B2)", f"{curr_oi:,.2f}", f"{curr_oi - last_oi:,.2f}")
+                c3.metric("最新成交額 (P2)", f"${vol:,.0f}")
+                
+                # 判定巨鯨是否出貨
+                if vol > threshold:
+                    if curr_oi < last_oi:
+                        st.error("🚨 警告：巨鯨大額成交但持倉減少 -> 【正在出貨/平倉】")
+                    else:
+                        st.success("✅ 確認：巨鯨大額成交且持倉增加 -> 【建倉持有中】")
+                
+                if liq:
+                    st.warning(f"🔥 偵測到近期爆倉事件")
 
-                st.subheader(f"📊 巨鯨行為分析：{status}")
-                if is_saturday:
-                    st.warning("📅 當前數據已自動歸類為【週六專屬數據】")
-
-                # 顯示最近爆倉紀錄
-                if liq_data:
-                    st.error(f"🚨 偵測到爆倉單：價格 {liq_data[0]['price']} 數量 {liq_data[0]['origQty']}")
-
-            prev_oi = curr_oi
-            time.sleep(3) # 每 3 秒循環一次
-
+            last_oi = curr_oi
+            time.sleep(3) # 嚴格執行您的 3 秒封包邏輯
+            
         except Exception as e:
-            st.error(f"連線錯誤: {e}")
+            st.error(f"發生錯誤: {e}")
             break
+else:
+    st.info("請輸入 API Key 並點擊啟動監控")
