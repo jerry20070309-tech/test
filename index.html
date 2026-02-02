@@ -5,96 +5,98 @@ from datetime import datetime
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 
-# --- [設定層] ---
-st.set_page_config(page_title="Whale Tracker Pro", layout="wide")
+# --- [A1] 網頁版頭與環境初始化 ---
+st.set_page_config(page_title="Binance Whale Dashboard", layout="wide")
 
-# 側邊欄：搜尋與配置
+# 初始化 Session State (確保跨秒數據不丟失)
+if 'prev_oi' not in st.session_state:
+    st.session_state.prev_oi = 0.0
+
+# --- [A2] 側邊欄：搜尋與安全性設定 ---
 with st.sidebar:
-    st.title("🐋 巨鯨監控面板")
-    # 【P1】搜尋欄：動態切換監控幣對
-    symbol = st.text_input("搜尋幣對 (例如: BTCUSDT)", value="BTCUSDT").upper()
+    st.title("🔍 監控配置")
+    # 【P1】搜尋欄：動態決定監控幣對
+    symbol = st.text_input("搜尋幣對 (例如 BTCUSDT)", value="BTCUSDT").upper()
     whale_threshold = st.number_input("【P2】巨鯨成交門檻 (USDT)", value=50000)
-    api_key = st.text_input("請輸入 API Key", type="password")
-    api_secret = st.text_input("請輸入 API Secret", type="password")
-    is_active = st.toggle("啟動監控系統")
+    
+    # 建議從 GitHub Secrets 讀取，或在此手動輸入
+    api_key = st.text_input("Binance API Key", type="password")
+    api_secret = st.text_input("Binance API Secret", type="password")
+    
+    is_active = st.toggle("🚀 啟動監控系統")
 
-# --- [邏輯層：3秒3封包抓取] ---
-def fetch_whale_data(client, symbol):
-    """
-    底層邏輯：
-    1. 抓取 P2 (成交量)
-    2. 抓取 P3 (爆倉量)
-    3. 抓取 B2 (持倉量分析)
-    """
+# --- [A3] 核心抓取函數：每 3 秒 3 封包 ---
+def fetch_binance_data(client, symbol):
     try:
+        # 同時請求：成交 (P2)、爆倉 (P3)、持倉 (B2)
         trades = client.futures_recent_trades(symbol=symbol, limit=20)
-        oi = client.futures_open_interest(symbol=symbol)
-        liq = client.futures_get_all_liquidation_orders(symbol=symbol, limit=5)
-        return trades, oi, liq
+        oi_data = client.futures_open_interest(symbol=symbol)
+        liquidations = client.futures_get_all_liquidation_orders(symbol=symbol, limit=5)
+        return trades, oi_data, liquidations
     except Exception as e:
-        st.error(f"連線失敗: {e}")
+        st.error(f"連線異常: {e}")
         return None, None, None
 
-# --- [執行層] ---
+# --- [A4] 執行主循環 ---
 if is_active and api_key and api_secret:
+    # 僅在按下開關後初始化 Client，避免開頭報錯
     client = Client(api_key, api_secret)
     placeholder = st.empty()
-    prev_oi = 0.0
-    
+
     while True:
-        start_loop = time.perf_counter()
+        start_time = time.perf_counter() # 精確計時開始
         
-        # 執行 3 封包抓取
-        trades, oi, liq = fetch_whale_data(client, symbol)
-        
+        trades, oi, liq = fetch_binance_data(client, symbol)
+
         if trades and oi:
-            # 解析數據
+            # 數據解析
             df_trades = pd.DataFrame(trades)
             df_trades['price'] = df_trades['price'].astype(float)
             df_trades['qty'] = df_trades['qty'].astype(float)
             df_trades['total'] = df_trades['price'] * df_trades['qty']
             
             curr_oi = float(oi['openInterest'])
-            oi_change = curr_oi - prev_oi if prev_oi != 0 else 0
+            oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi != 0 else 0
             
-            # 【週六歸屬邏輯】
-            is_sat = datetime.utcnow().weekday() == 5
+            # 【週六/週一歸屬邏輯】
+            is_saturday = datetime.utcnow().weekday() == 5
             
             with placeholder.container():
-                st.header(f"📊 {symbol} 即時看板 " + ("(📅 週六監控中)" if is_sat else ""))
+                st.markdown(f"## 📊 {symbol} 實時分析看板 " + ("🟢 (週六監控)" if is_saturday else ""))
                 
                 # 數據儀表板
-                col1, col2, col3 = st.columns(3)
-                col1.metric("價格", f"${df_trades['price'].iloc[-1]:,.4f}")
-                col2.metric("持倉變動 (B2)", f"{curr_oi:,.2f}", f"{oi_change:,.2f}")
-                col3.metric("最新成交額 (P2)", f"${df_trades['total'].iloc[-1]:,.0f}")
-                
-                # 判定巨鯨是否出貨
+                c1, c2, c3 = st.columns(3)
+                c1.metric("當前價格", f"${df_trades['price'].iloc[-1]:,.4f}")
+                c2.metric("持倉變動 (B2)", f"{curr_oi:,.2f}", f"{oi_change:,.2f}")
+                c3.metric("最新大單 (P2)", f"${df_trades['total'].iloc[-1]:,.0f}")
+
                 st.divider()
-                st.subheader("🕵️ 巨鯨動態分析")
+                st.subheader("🕵️ 巨鯨進出貨自動判定")
                 
-                # 檢查大單
+                # 判定邏輯：篩選出大單
                 big_trades = df_trades[df_trades['total'] >= whale_threshold]
                 if not big_trades.empty:
                     for _, row in big_trades.iterrows():
-                        side = "🔴 賣出" if row['isBuyerMaker'] else "🟢 買入"
-                        # 判定：大單買入 + OI增加 = 建倉；大單賣出 + OI減少 = 出貨
+                        side = "🔴 主動賣出" if row['isBuyerMaker'] else "🟢 主動買入"
+                        
+                        # 核心出貨判定：價格在漲，但持倉(OI)在減少 = 莊家跑路
                         if not row['isBuyerMaker'] and oi_change > 0:
-                            note = "💎 巨鯨正在進貨 (建倉中)"
+                            status = "💎 巨鯨進貨中 (建倉持有)"
                         elif row['isBuyerMaker'] and oi_change < 0:
-                            note = "⚠️ 巨鯨正在出貨 (獲利了結)"
+                            status = "⚠️ 警告：巨鯨正在出貨 (獲利了結)"
                         else:
-                            note = "🔄 盤整換手"
-                        st.info(f"**偵測到大單:** {side} ${row['total']:,.0f} | **判定:** {note}")
+                            status = "🔄 市場換手/常規波動"
+                        
+                        st.info(f"**偵測到大單:** {side} ${row['total']:,.0f} | **判定:** {status}")
 
-                # 顯示爆倉 (P3)
                 if liq:
                     st.warning(f"🚨 偵測到爆倉活動！價格: {liq[0]['price']}")
 
-            prev_oi = curr_oi
+            # 更新歷史持倉
+            st.session_state.prev_oi = curr_oi
 
-        # 嚴格執行 3 秒週期
-        elapsed = time.perf_counter() - start_loop
+        # 確保嚴格 3 秒循環，扣除程式執行時間
+        elapsed = time.perf_counter() - start_time
         time.sleep(max(0, 3.0 - elapsed))
 else:
-    st.warning("請在側邊欄填寫 API Key 並開啟『啟動監控系統』。")
+    st.info("💡 請在側邊欄輸入 API 金鑰並啟動監控。如果還是跑不出來，請檢查 API Key 是否有開通 Futures 權限。")
