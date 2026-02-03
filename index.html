@@ -2,148 +2,139 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ SNIPER V12.0 | SATURDAY EXCLUSIVE</title>
+    <title>⚡ SNIPER V12.0 | 完整監控系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
         body { background: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; }
-        .card { background: #0a0a0a; border: 1px solid #1a1a1a; padding: 15px; border-radius: 8px; }
-        .sat-mode { border: 2px solid #22c55e !important; box-shadow: 0 0 15px #22c55e; }
-        .mon-mode { border: 2px solid #3b82f6 !important; }
+        .card { background: #0a0a0a; border: 1px solid #1a1a1a; padding: 20px; border-radius: 12px; transition: 0.3s; }
+        .sat-card { border: 2px solid #22c55e !important; box-shadow: 0 0 15px #22c55e; }
+        .mon-card { border: 2px solid #3b82f6 !important; }
         .whale-alert { animation: pulse 1s infinite; background: #2a0000 !important; border: 2px solid #ff0000; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
     </style>
 </head>
-<body class="p-5">
+<body class="p-8">
 
-    <header class="flex justify-between items-center border-b border-yellow-900 pb-4 mb-6">
+    <header class="flex justify-between items-center border-b border-yellow-900 pb-6 mb-8">
         <div>
-            <h1 class="text-3xl font-black italic text-yellow-500">⚡ SNIPER V12.0</h1>
-            <p id="dayStatus" class="text-xs text-zinc-500 mt-1 italic">系統對齊中...</p>
+            <h1 class="text-4xl font-black italic text-yellow-500">⚡ SNIPER V12.0</h1>
+            <div id="statusInfo" class="text-sm mt-2 font-bold italic text-zinc-500">系統待命中...</div>
         </div>
         <div class="flex gap-4">
-            <input id="apiKey" type="password" placeholder="Binance API Key" class="bg-zinc-900 border border-zinc-700 px-3 py-1 text-xs rounded text-white">
-            <button onclick="toggleSystem()" id="sysBtn" class="bg-yellow-600 text-black px-6 py-2 font-black rounded hover:bg-yellow-500">START RADAR</button>
+            <input id="symbolInput" type="text" value="BTCUSDT" class="bg-zinc-900 border border-zinc-700 px-4 py-2 rounded text-white w-32 uppercase">
+            <button onclick="startSystem()" id="runBtn" class="bg-yellow-600 text-black px-8 py-2 font-black rounded hover:bg-yellow-500">START RADAR</button>
         </div>
     </header>
 
-    <div id="dashboard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="text-zinc-600">等待啟動系統以掃描巨鯨單...</div>
+    <div id="displayArea" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="text-zinc-700">點擊 START 開始追蹤巨鯨...</div>
     </div>
 
-    <footer class="mt-10 border-t border-zinc-800 pt-4">
-        <h2 class="text-red-500 font-bold mb-2 uppercase text-xs">戰鬥日誌 (週六專屬紀錄)</h2>
-        <div id="logContainer" class="h-40 overflow-y-auto bg-zinc-950 p-3 text-[10px] space-y-1 rounded border border-zinc-900"></div>
-    </footer>
+    <div class="mt-12">
+        <h2 class="text-red-500 font-black text-lg mb-4 uppercase">🛡️ 戰鬥日誌 (數據歸屬存檔)</h2>
+        <div id="logBox" class="bg-zinc-950 border border-zinc-900 p-4 h-64 overflow-y-auto text-[11px] rounded space-y-2"></div>
+    </div>
 
 <script>
-    let isRunning = false;
-    let prevOI = {}; // 紀錄持倉數據
-    const WHALE_THRESHOLD = 50000; // 巨鯨門檻
+    let active = false;
+    let lastOI = 0;
+    const WHALE_MIN = 50000; // 巨鯨金額門檻
 
-    // 1. [核心邏輯] 判定日期歸屬
-    function updateDayStatus() {
+    // 1. 核心邏輯：判定日期歸屬 (週六/週一)
+    function checkDateMode() {
         const now = new Date();
-        const day = now.getUTCDay(); // 0:週日, 1:週一... 5:週五, 6:週六
-        const statusEl = document.getElementById('dayStatus');
+        const day = now.getUTCDay(); // 6 是週六, 1 是週一
+        const info = document.getElementById('statusInfo');
         
         if (day === 6) {
-            statusEl.innerText = "📅 當前時段：週六 (數據已歸類為週六專屬)";
-            statusEl.className = "text-green-500 font-bold italic";
-            return "SAT";
+            info.innerText = "📅 模式：週六專屬 (數據獨立歸類)";
+            info.className = "text-green-500 font-bold italic";
+            return "SATURDAY";
         } else if (day === 1) {
-            statusEl.innerText = "📅 當前時段：週一 (高勝率監控模式)";
-            statusEl.className = "text-blue-500 font-bold italic";
-            return "MON";
+            info.innerText = "📅 模式：週一高勝率計算中";
+            info.className = "text-blue-500 font-bold italic";
+            return "MONDAY";
         } else {
-            statusEl.innerText = "📅 當前時段：一般工作日";
-            statusEl.className = "text-zinc-500 italic";
+            info.innerText = "📅 模式：一般監控時段";
+            info.className = "text-zinc-500 italic";
             return "NORMAL";
         }
     }
 
-    // 2. [數據引擎] 抓取幣安數據 (P2, B2, P3 邏輯整合)
-    async function scan() {
-        if (!isRunning) return;
-        const mode = updateDayStatus();
+    // 2. 數據抓取引擎
+    async function fetchData() {
+        if (!active) return;
+        const symbol = document.getElementById('symbolInput').value.toUpperCase();
+        const mode = checkDateMode();
 
         try {
-            // 同時抓取價格與持倉量 (OI)
-            const [tickerRes, oiRes] = await Promise.all([
-                fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT'),
-                fetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT')
+            const [tRes, oRes] = await Promise.all([
+                fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${symbol}`),
+                fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`)
             ]);
 
-            const tData = await tickerRes.json();
-            const oData = await oiRes.json();
-
-            render(tData, oData, mode);
-
-        } catch (e) {
-            console.error("API 連線失敗", e);
+            const ticker = await tRes.json();
+            const oiData = await oRes.json();
+            
+            processData(ticker, oiData, mode);
+        } catch (err) {
+            console.error("API Error");
         }
 
-        // 穩定循環：每 3 秒刷新一次，對齊 SNIPER V11.8 節奏
-        setTimeout(scan, 3000);
+        setTimeout(fetchData, 3000); // 穩定 3 秒刷新一次
     }
 
-    // 3. [渲染層] 生成卡片與判定巨鯨
-    function render(t, o, mode) {
-        const dashboard = document.getElementById('dashboard');
+    // 3. 處理與渲染 (對齊你的 P2, B2, P3 邏輯)
+    function processData(t, o, mode) {
         const price = parseFloat(t.lastPrice);
-        const currOI = parseFloat(o.openInterest);
-        const symbol = t.symbol;
-        
-        // B2 持倉變動計算
-        const changeOI = prevOI[symbol] ? currOI - prevOI[symbol] : 0;
-        prevOI[symbol] = currOI;
+        const currentOI = parseFloat(o.openInterest);
+        const changeOI = lastOI > 0 ? currentOI - lastOI : 0;
+        const vol = price * parseFloat(t.lastQty);
+        lastOI = currentOI;
 
-        // P2 成交量估算
-        const latestVol = price * parseFloat(t.lastQty);
-        const isWhale = latestVol >= WHALE_THRESHOLD;
+        const isWhale = vol >= WHALE_MIN;
+        let cardStyle = "card";
+        if (mode === "SATURDAY") cardStyle += " sat-card";
+        if (isWhale) cardStyle += " whale-alert";
 
-        // 根據日期顯示不同樣式
-        let cardClass = "card";
-        if (mode === "SAT") cardClass += " sat-mode";
-        if (isWhale) cardClass += " whale-alert";
-
-        dashboard.innerHTML = `
-            <div class="${cardClass}">
-                <div class="flex justify-between text-[10px] mb-2">
-                    <span class="bg-zinc-800 px-2 rounded font-bold">${symbol}</span>
-                    <span class="${changeOI >= 0 ? 'text-green-500' : 'text-red-500'}">OI: ${changeOI.toFixed(2)}</span>
+        document.getElementById('displayArea').innerHTML = `
+            <div class="${cardStyle}">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xl font-black">${t.symbol}</span>
+                    <span class="${changeOI >= 0 ? 'text-green-500' : 'text-red-500'} font-bold text-xs">OI變動: ${changeOI.toFixed(2)}</span>
                 </div>
-                <div class="text-2xl font-black text-white">$${price.toLocaleString()}</div>
-                <div class="tsl-box flex justify-between mt-3 text-[9px] text-zinc-500 border-t border-zinc-800 pt-2">
-                    <span>成交金額: $${latestVol.toFixed(0)}</span>
-                    <span class="text-yellow-500">${isWhale ? '🚨 WHALE DETECTED' : 'SCANNING...'}</span>
+                <div class="text-3xl font-black text-white">$${price.toLocaleString()}</div>
+                <div class="mt-6 pt-4 border-t border-zinc-900 flex justify-between text-[10px]">
+                    <span class="text-zinc-500 text-xs">成交金額: $${vol.toFixed(0)}</span>
+                    <span class="font-bold text-yellow-500">${isWhale ? '🚨 DETECTED' : 'SCANNING'}</span>
                 </div>
             </div>
         `;
 
         if (isWhale) {
-            addLog(symbol, latestVol, mode);
+            writeLog(t.symbol, vol, mode);
         }
     }
 
-    // 4. [日誌系統] 確保週六數據正確歸類
-    function addLog(s, vol, mode) {
-        const log = document.getElementById('logContainer');
+    // 4. 日誌歸屬紀錄
+    function writeLog(sym, vol, mode) {
+        const logBox = document.getElementById('logBox');
         const time = new Date().toLocaleTimeString();
-        const entry = document.createElement('div');
+        const tag = mode === "SATURDAY" ? "<span class='text-green-500'>[週六專屬]</span>" : (mode === "MONDAY" ? "<span class='text-blue-500'>[週一高勝率]</span>" : "[一般]");
         
-        // 根據用戶要求：將數據嚴格歸類
-        const tag = mode === "SAT" ? "[週六專屬紀錄]" : (mode === "MON" ? "[週一高勝率]" : "[一般偵測]");
-        
-        entry.innerHTML = `<span class="text-zinc-500">${time}</span> <b class="text-yellow-500">${tag}</b> 偵測到巨鯨單 ${s} 金額: $${vol.toFixed(0)}`;
-        log.prepend(entry);
+        const div = document.createElement('div');
+        div.className = "border-b border-zinc-900 pb-1";
+        div.innerHTML = `[${time}] ${tag} <b>${sym}</b> 觸發大額成交: $${vol.toFixed(0)}`;
+        logBox.prepend(div);
     }
 
-    function toggleSystem() {
-        isRunning = !isRunning;
-        document.getElementById('sysBtn').innerText = isRunning ? "STOP RADAR" : "START RADAR";
-        document.getElementById('sysBtn').className = isRunning ? "bg-red-600 text-white px-6 py-2 font-black rounded" : "bg-yellow-600 text-black px-6 py-2 font-black rounded";
-        if (isRunning) scan();
+    function startSystem() {
+        active = !active;
+        const btn = document.getElementById('runBtn');
+        btn.innerText = active ? "STOP RADAR" : "START RADAR";
+        btn.className = active ? "bg-red-600 text-white px-8 py-2 font-black rounded" : "bg-yellow-600 text-black px-8 py-2 font-black rounded";
+        if (active) fetchData();
     }
 </script>
 </body>
