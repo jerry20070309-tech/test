@@ -1,87 +1,150 @@
-import streamlit as st
-import pandas as pd
-import time
-from datetime import datetime
-from binance.client import Client
-
-# --- [A] 專業 Sniper 視覺配置 ---
-st.set_page_config(page_title="SNIPER WHALE V1.0", layout="wide")
-st.markdown("""
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>⚡ SNIPER V12.0 | SATURDAY EXCLUSIVE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-    .main { background-color: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; }
-    .stMetric { border: 1px solid #1a1a1a; background-color: #0a0a0a; padding: 15px; border-radius: 8px; }
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
+        body { background: #050505; color: #FFD700; font-family: 'JetBrains Mono', monospace; }
+        .card { background: #0a0a0a; border: 1px solid #1a1a1a; padding: 15px; border-radius: 8px; }
+        .sat-mode { border: 2px solid #22c55e !important; box-shadow: 0 0 15px #22c55e; }
+        .mon-mode { border: 2px solid #3b82f6 !important; }
+        .whale-alert { animation: pulse 1s infinite; background: #2a0000 !important; border: 2px solid #ff0000; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
     </style>
-    """, unsafe_allow_html=True)
+</head>
+<body class="p-5">
 
-# --- [B] 側邊欄控制：搜尋與 API 配置 ---
-with st.sidebar:
-    st.title("⚡ SNIPER RADAR")
-    # P1: 搜尋功能 - 輸入即可動態切換幣對
-    symbol = st.text_input("🔍 搜尋監控幣對 (如 BTCUSDT)", value="BTCUSDT").upper()
-    whale_threshold = st.number_input("💵 巨鯨門檻 (USDT)", value=50000)
-    
-    st.divider()
-    api_key = st.text_input("Binance API Key", type="password")
-    api_secret = st.text_input("Binance API Secret", type="password")
-    is_active = st.toggle("🚀 START MONITORING")
+    <header class="flex justify-between items-center border-b border-yellow-900 pb-4 mb-6">
+        <div>
+            <h1 class="text-3xl font-black italic text-yellow-500">⚡ SNIPER V12.0</h1>
+            <p id="dayStatus" class="text-xs text-zinc-500 mt-1 italic">系統對齊中...</p>
+        </div>
+        <div class="flex gap-4">
+            <input id="apiKey" type="password" placeholder="Binance API Key" class="bg-zinc-900 border border-zinc-700 px-3 py-1 text-xs rounded text-white">
+            <button onclick="toggleSystem()" id="sysBtn" class="bg-yellow-600 text-black px-6 py-2 font-black rounded hover:bg-yellow-500">START RADAR</button>
+        </div>
+    </header>
 
-# --- [C] 核心數據引擎：每 3 秒 3 封包 ---
-def get_market_packets(client, target):
-    try:
-        # 同步請求：P2(成交)、B2(持倉)、P3(爆倉)
-        trades = client.futures_recent_trades(symbol=target, limit=20)
-        oi = client.futures_open_interest(symbol=target)
-        liqs = client.futures_get_all_liquidation_orders(symbol=target, limit=1)
-        return trades, oi, liqs
-    except Exception:
-        return None, None, None
+    <div id="dashboard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="text-zinc-600">等待啟動系統以掃描巨鯨單...</div>
+    </div>
 
-# --- [D] 邏輯判定與渲染 ---
-if is_active and api_key and api_secret:
-    client = Client(api_key, api_secret)
-    dashboard = st.empty()
-    
-    if 'prev_oi' not in st.session_state:
-        st.session_state.prev_oi = 0.0
+    <footer class="mt-10 border-t border-zinc-800 pt-4">
+        <h2 class="text-red-500 font-bold mb-2 uppercase text-xs">戰鬥日誌 (週六專屬紀錄)</h2>
+        <div id="logContainer" class="h-40 overflow-y-auto bg-zinc-950 p-3 text-[10px] space-y-1 rounded border border-zinc-900"></div>
+    </footer>
 
-    while True:
-        cycle_start = time.perf_counter()
-        t_data, o_data, l_data = get_market_packets(client, symbol)
+<script>
+    let isRunning = false;
+    let prevOI = {}; // 紀錄持倉數據
+    const WHALE_THRESHOLD = 50000; // 巨鯨門檻
 
-        if t_data and o_data:
-            price = float(t_data[-1]['price'])
-            curr_oi = float(o_data['openInterest'])
-            oi_change = curr_oi - st.session_state.prev_oi if st.session_state.prev_oi > 0 else 0
-            
-            # 【週六專屬判定】
-            is_sat = datetime.utcnow().weekday() == 5
-            
-            with dashboard.container():
-                st.markdown(f"## 📊 {symbol} 實時戰報 " + ("🟢 (週六模式)" if is_sat else ""))
-                
-                c1, c2, c3 = st.columns(3)
-                c1.metric("即時市價", f"${price:,.2f}")
-                c2.metric("持倉變動 (B2)", f"{curr_oi:,.2f}", f"{oi_change:,.2f}")
-                
-                trade_vol = price * float(t_data[-1]['qty'])
-                c3.metric("最新大單 (P2)", f"${trade_vol:,.0f}")
+    // 1. [核心邏輯] 判定日期歸屬
+    function updateDayStatus() {
+        const now = new Date();
+        const day = now.getUTCDay(); // 0:週日, 1:週一... 5:週五, 6:週六
+        const statusEl = document.getElementById('dayStatus');
+        
+        if (day === 6) {
+            statusEl.innerText = "📅 當前時段：週六 (數據已歸類為週六專屬)";
+            statusEl.className = "text-green-500 font-bold italic";
+            return "SAT";
+        } else if (day === 1) {
+            statusEl.innerText = "📅 當前時段：週一 (高勝率監控模式)";
+            statusEl.className = "text-blue-500 font-bold italic";
+            return "MON";
+        } else {
+            statusEl.innerText = "📅 當前時段：一般工作日";
+            statusEl.className = "text-zinc-500 italic";
+            return "NORMAL";
+        }
+    }
 
-                st.divider()
-                if trade_vol >= whale_threshold:
-                    is_seller = t_data[-1]['isBuyerMaker']
-                    # 邏輯判定：賣大單 + OI 減少 = 巨鯨逃離 (出貨)
-                    if is_seller and oi_change < 0:
-                        st.error(f"🚨 警告：偵測到巨鯨「平倉出貨」！金額: ${trade_vol:,.0f}")
-                    elif not is_seller and oi_change > 0:
-                        st.success(f"💎 訊號：偵測到巨鯨「進貨建倉」！金額: ${trade_vol:,.0f}")
-                
-                if l_data:
-                    st.warning(f"🔥 P3 爆倉偵測：觸發價 {l_data[0]['price']}")
+    // 2. [數據引擎] 抓取幣安數據 (P2, B2, P3 邏輯整合)
+    async function scan() {
+        if (!isRunning) return;
+        const mode = updateDayStatus();
 
-            st.session_state.prev_oi = curr_oi
+        try {
+            // 同時抓取價格與持倉量 (OI)
+            const [tickerRes, oiRes] = await Promise.all([
+                fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT'),
+                fetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT')
+            ]);
 
-        # 精確 3 秒循環
-        wait = max(0, 3.0 - (time.perf_counter() - cycle_start))
-        time.sleep(wait)
-else:
-    st.info("💡 請在左側輸入 API 金鑰並點擊啟動。這將解決 GitHub Actions 的排隊報錯問題。")
+            const tData = await tickerRes.json();
+            const oData = await oiRes.json();
+
+            render(tData, oData, mode);
+
+        } catch (e) {
+            console.error("API 連線失敗", e);
+        }
+
+        // 穩定循環：每 3 秒刷新一次，對齊 SNIPER V11.8 節奏
+        setTimeout(scan, 3000);
+    }
+
+    // 3. [渲染層] 生成卡片與判定巨鯨
+    function render(t, o, mode) {
+        const dashboard = document.getElementById('dashboard');
+        const price = parseFloat(t.lastPrice);
+        const currOI = parseFloat(o.openInterest);
+        const symbol = t.symbol;
+        
+        // B2 持倉變動計算
+        const changeOI = prevOI[symbol] ? currOI - prevOI[symbol] : 0;
+        prevOI[symbol] = currOI;
+
+        // P2 成交量估算
+        const latestVol = price * parseFloat(t.lastQty);
+        const isWhale = latestVol >= WHALE_THRESHOLD;
+
+        // 根據日期顯示不同樣式
+        let cardClass = "card";
+        if (mode === "SAT") cardClass += " sat-mode";
+        if (isWhale) cardClass += " whale-alert";
+
+        dashboard.innerHTML = `
+            <div class="${cardClass}">
+                <div class="flex justify-between text-[10px] mb-2">
+                    <span class="bg-zinc-800 px-2 rounded font-bold">${symbol}</span>
+                    <span class="${changeOI >= 0 ? 'text-green-500' : 'text-red-500'}">OI: ${changeOI.toFixed(2)}</span>
+                </div>
+                <div class="text-2xl font-black text-white">$${price.toLocaleString()}</div>
+                <div class="tsl-box flex justify-between mt-3 text-[9px] text-zinc-500 border-t border-zinc-800 pt-2">
+                    <span>成交金額: $${latestVol.toFixed(0)}</span>
+                    <span class="text-yellow-500">${isWhale ? '🚨 WHALE DETECTED' : 'SCANNING...'}</span>
+                </div>
+            </div>
+        `;
+
+        if (isWhale) {
+            addLog(symbol, latestVol, mode);
+        }
+    }
+
+    // 4. [日誌系統] 確保週六數據正確歸類
+    function addLog(s, vol, mode) {
+        const log = document.getElementById('logContainer');
+        const time = new Date().toLocaleTimeString();
+        const entry = document.createElement('div');
+        
+        // 根據用戶要求：將數據嚴格歸類
+        const tag = mode === "SAT" ? "[週六專屬紀錄]" : (mode === "MON" ? "[週一高勝率]" : "[一般偵測]");
+        
+        entry.innerHTML = `<span class="text-zinc-500">${time}</span> <b class="text-yellow-500">${tag}</b> 偵測到巨鯨單 ${s} 金額: $${vol.toFixed(0)}`;
+        log.prepend(entry);
+    }
+
+    function toggleSystem() {
+        isRunning = !isRunning;
+        document.getElementById('sysBtn').innerText = isRunning ? "STOP RADAR" : "START RADAR";
+        document.getElementById('sysBtn').className = isRunning ? "bg-red-600 text-white px-6 py-2 font-black rounded" : "bg-yellow-600 text-black px-6 py-2 font-black rounded";
+        if (isRunning) scan();
+    }
+</script>
+</body>
+</html>
