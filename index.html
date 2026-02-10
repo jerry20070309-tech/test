@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ TRIDENT V42 | 30s 穩定版本</title>
+    <title>⚡ TRIDENT V42 | 純幣穩定版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap');
@@ -14,8 +14,9 @@
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         .oi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 8px; }
         .oi-item { background: #161618; padding: 4px 0; border-radius: 3px; font-size: 9px; font-weight: bold; text-align: center; }
-        #alertLog { background: #0a0a0c; border-left: 1px solid #1f1f23; }
         .refresh-bar { height: 2px; background: #3b82f6; width: 0%; transition: width 0.1s linear; }
+        #logContent::-webkit-scrollbar { width: 4px; }
+        #logContent::-webkit-scrollbar-thumb { background: #333; }
     </style>
 </head>
 <body class="p-6 h-screen flex flex-col">
@@ -23,59 +24,66 @@
     <header class="flex justify-between items-center border-b border-zinc-800 pb-4 mb-2">
         <div class="flex items-center gap-6">
             <h1 class="text-2xl font-black italic text-white tracking-tighter">TRIDENT <span class="text-blue-500">V42</span></h1>
-            <input type="text" id="searchInput" onkeypress="handleSearch(event)" placeholder="搜尋 (例: SOL)..." 
-                class="bg-zinc-900 border border-zinc-700 text-xs px-3 py-2 rounded w-48 outline-none focus:border-blue-500 text-white uppercase">
+            <div class="text-[10px] bg-blue-900/30 text-blue-400 px-2 py-1 rounded border border-blue-800/50">CRYPTO ONLY</div>
         </div>
         <div class="flex items-center gap-6">
             <div class="text-right">
-                <div class="text-[10px] text-blue-400 mb-1 font-bold uppercase">Data Sync: 30s</div>
+                <div class="text-[10px] text-blue-400 mb-1 font-bold uppercase tracking-widest">Safe Sync: 30s</div>
                 <div class="w-48 bg-zinc-800 rounded-full h-1 overflow-hidden">
                     <div id="refreshProgress" class="refresh-bar"></div>
                 </div>
             </div>
-            <button id="startBtn" onclick="ignite()" class="bg-blue-700 hover:bg-blue-600 text-white px-6 py-2 font-black rounded text-xs uppercase shadow-lg">啟動穩定監控</button>
+            <button id="startBtn" onclick="ignite()" class="bg-blue-700 hover:bg-blue-600 text-white px-6 py-2 font-black rounded text-xs uppercase shadow-lg transition-all">開啟加密貨幣監控</button>
         </div>
     </header>
 
     <main class="flex flex-1 overflow-hidden gap-6">
         <div id="monitorList" class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2"></div>
-        <div id="alertLog" class="w-80 flex flex-col border border-zinc-800 rounded-lg">
-            <div class="bg-zinc-900 p-3 text-[10px] font-black text-blue-400 border-b border-zinc-800 uppercase">POC Breakout Log</div>
+        <div id="alertLog" class="w-80 flex flex-col border border-zinc-800 rounded-lg bg-black/50">
+            <div class="bg-zinc-900 p-3 text-[10px] font-black text-blue-400 border-b border-zinc-800 uppercase flex justify-between">
+                <span>Breaking POC Log</span>
+                <span class="text-zinc-600">Live</span>
+            </div>
             <div id="logContent" class="flex-1 overflow-y-auto p-2"></div>
         </div>
     </main>
 
 <script>
-    const EXCLUDE = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'USDCUSDT', 'FDUSDUSDT'];
+    // 排除名單：主流幣、穩定幣、黃金(XAU)、白銀(XAG) 以及非 USDT 幣種
+    const EXCLUDE = [
+        'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT', 
+        'USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'XAUUSDT', 'XAGUSDT', 
+        'BTCDOMUSDT', 'DEFIUSDT'
+    ];
+    
     let marketData = {};
     let loggedAlerts = new Set();
     let pinnedSymbols = new Set(JSON.parse(localStorage.getItem('trident_pinned')) || []);
     let isRunning = false;
 
-    // --- 核心同步邏輯：嚴格 30 秒 ---
     async function ignite() {
         if(isRunning) return;
         isRunning = true;
-        document.getElementById('startBtn').innerText = "SAFE MODE (30S)";
-        document.getElementById('startBtn').disabled = true;
-        document.getElementById('startBtn').classList.replace('bg-blue-700', 'bg-zinc-800');
+        const btn = document.getElementById('startBtn');
+        btn.innerText = "SAFE MONITORING";
+        btn.disabled = true;
+        btn.classList.replace('bg-blue-700', 'bg-zinc-800');
 
-        await refreshAllData(); // 初始抓取
-        startWS();             // WebSocket
+        await refreshAllData();
+        startWS();
 
         const SYNC_PERIOD = 30000; // 30秒
-        const UI_TICK = 100;       // 每 0.1 秒更新一次 UI 進度
+        const UI_TICK = 100;
         let elapsed = 0;
 
         setInterval(() => {
             elapsed += UI_TICK;
-            // 計算進度條寬度 (0 ~ 100%)
             let progress = (elapsed / SYNC_PERIOD) * 100;
             document.getElementById('refreshProgress').style.width = progress + '%';
 
             if (elapsed >= SYNC_PERIOD) {
                 elapsed = 0;
-                refreshAllData(); // 每 30 秒準時執行
+                refreshAllData();
             }
         }, UI_TICK);
     }
@@ -83,23 +91,27 @@
     async function refreshAllData() {
         try {
             const tickers = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json());
+            
+            // 嚴格篩選：必須是 USDT 結尾，且不在排除名單內，且不是商品合約
             const targets = tickers
-                .filter(t => t.symbol.endsWith('USDT') && !EXCLUDE.includes(t.symbol))
+                .filter(t => 
+                    t.symbol.endsWith('USDT') && 
+                    !EXCLUDE.some(ex => t.symbol.includes(ex)) &&
+                    !t.symbol.startsWith('XAU') && 
+                    !t.symbol.startsWith('XAG')
+                )
                 .sort((a,b) => b.quoteVolume - a.quoteVolume)
-                .slice(0, 30);
+                .slice(0, 32);
 
             const finalTargets = [...new Set([...pinnedSymbols, ...targets.map(t => t.symbol)])];
             
-            // 安全佇列：每個請求間隔 100ms
             for (let s of finalTargets) {
                 await initSymbol(s);
-                await new Promise(r => setTimeout(r, 100)); 
+                await new Promise(r => setTimeout(r, 100)); // 每個請求間隔 100ms 防止鎖 IP
             }
-            console.log("30秒週期數據更新完畢");
-        } catch (e) { console.warn("API 流量控制中..."); }
+        } catch (e) { console.warn("API 節流中..."); }
     }
 
-    // --- 其餘數據處理函數 ---
     async function initSymbol(s) {
         try {
             const [k, oi] = await Promise.all([
@@ -168,7 +180,7 @@
         el.innerHTML = `
             <div class="flex justify-between items-center mb-2">
                 <span class="text-white font-black italic text-base uppercase">${s.replace('USDT','')}</span>
-                <span class="text-[9px] font-bold ${p > data.poc ? 'text-emerald-400' : 'text-red-500'}">${p > data.poc ? 'ABOVE' : 'BELOW'} POC</span>
+                <span class="text-[9px] font-bold ${p > data.poc ? 'text-emerald-400' : 'text-red-500'}">${p > data.poc ? 'Above POC' : 'Below POC'}</span>
             </div>
             <div class="win-gradient mb-4"><div class="pointer" style="left: ${Math.max(5, Math.min(95, winRate))}%"></div></div>
             <div class="oi-grid">
@@ -187,8 +199,8 @@
     function addLog(s, p, v) {
         loggedAlerts.add(s);
         const div = document.createElement('div');
-        div.className = "p-2 bg-red-950/20 border-l-2 border-red-600 mb-1 text-[11px]";
-        div.innerHTML = `<span class="text-red-500 font-bold">${s}</span> 跌破 POC | 放量 ${v.toFixed(1)}x`;
+        div.className = "p-2 bg-red-950/20 border-l-2 border-red-600 mb-1 text-[11px] animate-pulse";
+        div.innerHTML = `<span class="text-red-500 font-bold">${s}</span> 破位 $${p} | ${v.toFixed(1)}x Vol`;
         document.getElementById('logContent').prepend(div);
     }
 
