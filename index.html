@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ TRIDENT V42 | 自動刷新增強版</title>
+    <title>⚡ TRIDENT V42 | 安全穩定版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap');
@@ -22,27 +22,26 @@
         .star-active { color: #facc15; text-shadow: 0 0 8px #facc15; }
         .star-inactive { color: #27272a; }
         .poc-line { color: #facc15; font-size: 9px; border-top: 1px dashed #333; margin-top: 8px; padding-top: 4px; }
-        /* 進度條動畫 */
-        .refresh-bar { height: 2px; background: #eab308; width: 0%; transition: width 0.1s linear; }
+        .refresh-bar { height: 2px; background: #3b82f6; width: 0%; transition: width 0.1s linear; }
     </style>
 </head>
 <body class="p-6 h-screen flex flex-col">
 
     <header class="flex justify-between items-center border-b border-zinc-800 pb-4 mb-2">
         <div class="flex items-center gap-6">
-            <h1 class="text-2xl font-black italic text-white tracking-tighter">TRIDENT <span class="text-yellow-500">V42</span></h1>
-            <input type="text" id="searchInput" onkeypress="handleSearch(event)" placeholder="搜尋幣種 (例: PEPE)..." 
-                class="bg-zinc-900 border border-zinc-700 text-xs px-3 py-2 rounded w-64 outline-none focus:border-yellow-500 text-white uppercase">
+            <h1 class="text-2xl font-black italic text-white tracking-tighter">TRIDENT <span class="text-blue-500">V42</span></h1>
+            <input type="text" id="searchInput" onkeypress="handleSearch(event)" placeholder="搜尋並定選 (例: SOL)..." 
+                class="bg-zinc-900 border border-zinc-700 text-xs px-3 py-2 rounded w-64 outline-none focus:border-blue-500 text-white uppercase">
         </div>
         <div class="flex items-center gap-6">
             <div class="text-right">
-                <div class="text-[10px] text-zinc-500 mb-1 uppercase font-bold">Data Auto-Sync (5s)</div>
+                <div class="text-[10px] text-zinc-500 mb-1 uppercase font-bold">Safe Sync Mode (30s)</div>
                 <div class="w-32 bg-zinc-800 rounded-full overflow-hidden">
                     <div id="refreshProgress" class="refresh-bar"></div>
                 </div>
             </div>
             <div class="flex gap-3">
-                <button id="startBtn" onclick="ignite()" class="bg-yellow-600 hover:bg-yellow-500 text-black px-6 py-2 font-black rounded text-xs uppercase shadow-lg transition-colors">啟動監控系統</button>
+                <button id="startBtn" onclick="ignite()" class="bg-blue-700 hover:bg-blue-600 text-white px-6 py-2 font-black rounded text-xs uppercase shadow-lg transition-all">啟動安全監控</button>
                 <button onclick="location.reload()" class="bg-zinc-800 text-zinc-300 px-6 py-2 font-black rounded text-xs uppercase hover:bg-zinc-700">重置</button>
             </div>
         </div>
@@ -50,14 +49,17 @@
 
     <main class="flex flex-1 overflow-hidden gap-6">
         <div id="monitorList" class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2">
-            <div class="col-span-full flex items-center justify-center text-zinc-600 italic text-sm">點擊「啟動監控系統」開始掃描市場數據...</div>
+            <div class="col-span-full flex flex-col items-center justify-center h-full text-zinc-600 gap-2">
+                <p class="italic text-sm">系統已就緒，建議監控幣種數量：20-40 個</p>
+                <p class="text-[10px] bg-zinc-900 px-3 py-1 rounded">WebSocket 即時價格 | 30秒 OI 輪詢</p>
+            </div>
         </div>
         <div id="alertLog" class="w-80 flex flex-col border border-zinc-800 rounded-lg shadow-2xl">
-            <div class="bg-zinc-900 p-3 text-[10px] font-black text-yellow-500 border-b border-zinc-800 uppercase flex justify-between">
+            <div class="bg-zinc-900 p-3 text-[10px] font-black text-blue-400 border-b border-zinc-800 uppercase flex justify-between">
                 <span>POC Breakout Log</span>
-                <span id="logCount" class="text-zinc-600">0</span>
+                <span id="logCount" class="text-zinc-600 font-mono">0</span>
             </div>
-            <div id="logContent" class="flex-1 overflow-y-auto p-2 space-y-2"></div>
+            <div id="logContent" class="flex-1 overflow-y-auto p-2 space-y-2 text-xs"></div>
         </div>
     </main>
 
@@ -67,20 +69,20 @@
     let loggedAlerts = new Set();
     let pinnedSymbols = new Set(JSON.parse(localStorage.getItem('trident_pinned')) || []);
     let isRunning = false;
-    let countdownSec = 0;
 
-    // --- 核心邏輯 ---
+    // --- 安全核心邏輯 ---
 
     async function ignite() {
         if(isRunning) return;
         isRunning = true;
-        document.getElementById('startBtn').innerText = "系統運行中...";
-        document.getElementById('startBtn').classList.replace('bg-yellow-600', 'bg-zinc-800');
-        document.getElementById('startBtn').classList.add('text-zinc-500');
+        const btn = document.getElementById('startBtn');
+        btn.innerText = "系統保護中...";
+        btn.classList.replace('bg-blue-700', 'bg-zinc-800');
+        btn.disabled = true;
 
-        await refreshAllData(); // 第一次強制抓取
-        startWS();             // 啟動價格串流
-        startAutoRefresh();    // 啟動 5s 定時器
+        await refreshAllData(); // 初始抓取
+        startWS();             // WebSocket 啟動
+        startAutoRefresh();    // 30秒定時啟動
     }
 
     async function refreshAllData() {
@@ -89,21 +91,24 @@
             const targets = tickers
                 .filter(t => t.symbol.endsWith('USDT') && !EXCLUDE.includes(t.symbol))
                 .sort((a,b) => b.quoteVolume - a.quoteVolume)
-                .slice(0, 36); // 監控前 36 名
+                .slice(0, 30); // 預設監控前 30 名，最安全
 
-            const finalTargets = new Set([...pinnedSymbols, ...targets.map(t => t.symbol)]);
+            const finalTargets = [...new Set([...pinnedSymbols, ...targets.map(t => t.symbol)])];
             
-            // 為了避免觸發 API 限制，使用 Promise.all 併發處理
-            await Promise.allSettled([...finalTargets].map(s => initSymbol(s)));
-            console.log("市場數據已同步完成");
+            // 安全隊列化：每 100ms 處理一個幣種，避免 API 瞬間併發過高
+            for (let s of finalTargets) {
+                await initSymbol(s);
+                await new Promise(r => setTimeout(r, 100)); 
+            }
+            console.log(`數據同步成功 (${new Date().toLocaleTimeString()})`);
         } catch (e) {
-            console.error("刷新失敗:", e);
+            console.warn("API 請求過於頻繁，等待下一輪更新...");
         }
     }
 
     function startAutoRefresh() {
-        const interval = 5000; // 5秒
-        const step = 100;      // 0.1秒更新一次進度條
+        const interval = 30000; // 30秒一次循環
+        const step = 200;       
         let elapsed = 0;
 
         setInterval(() => {
@@ -113,31 +118,31 @@
 
             if (elapsed >= interval) {
                 elapsed = 0;
-                refreshAllData(); // 每 5 秒重新計算一次 POC 與 OI
+                refreshAllData();
             }
         }, step);
     }
 
-    // --- 數據處理 ---
+    // --- 數據處理邏輯 (與原版相同但增加錯誤防禦) ---
 
     async function initSymbol(s) {
         try {
             const [k, oi] = await Promise.all([
-                fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r=>r.json()),
+                fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r => {
+                    if(!r.ok) throw 'API Limit'; return r.json();
+                }),
                 getOIStats(s)
             ]);
             
             const lows = k.map(x => parseFloat(x[3]));
-            const currentK = k[k.length-1];
-
             marketData[s] = {
                 support: Math.min(...lows),
                 poc: calculatePOC(k),
                 avgVol: k.reduce((a,b)=>a+parseFloat(b[5]), 0) / k.length,
                 oi: oi,
-                lastPrice: parseFloat(currentK[4])
+                lastPrice: parseFloat(k[k.length-1][4])
             };
-        } catch(e) {}
+        } catch(e) { }
     }
 
     function calculatePOC(klines) {
@@ -146,7 +151,7 @@
         const minP = Math.min(...allPrices);
         const maxP = Math.max(...allPrices);
         let step = (maxP - minP) / 20;
-        if (step === 0) step = 0.0001;
+        if (step <= 0) step = 0.00001;
 
         klines.forEach(k => {
             const price = parseFloat(k[4]);
@@ -175,7 +180,7 @@
         } catch(e) { return { m5: "0.00", m15: "0.00", h1: "0.00", h4: "0.00" }; }
     }
 
-    // --- 介面與通訊 ---
+    // --- UI 與 WebSocket ---
 
     function startWS() {
         const ws = new WebSocket('wss://fstream.binance.com/ws/!ticker@arr');
@@ -194,6 +199,7 @@
                 updateUI(m.s, price, volRatio, (price < base.poc && volRatio > 2.0), base, winRate);
             });
         };
+        ws.onclose = () => setTimeout(startWS, 2000);
     }
 
     function addAlertLog(symbol, price, vol) {
@@ -202,8 +208,8 @@
         const div = document.createElement('div');
         div.className = "log-entry p-3 bg-zinc-950 rounded border-l-2 border-red-600 mb-2";
         div.innerHTML = `
-            <div class="flex justify-between font-black text-xs text-red-500"><span>${symbol}</span><span>⚠️ POC 失守</span></div>
-            <div class="text-[8px] text-zinc-500 mt-1">$${price} | 放量: ${vol.toFixed(2)}x</div>`;
+            <div class="flex justify-between font-black text-red-500"><span>${symbol}</span><span>DROP POC</span></div>
+            <div class="text-[9px] text-zinc-500 mt-1">$${price} | Vol: ${vol.toFixed(2)}x</div>`;
         logContent.prepend(div);
         document.getElementById('logCount').innerText = loggedAlerts.size;
     }
@@ -227,7 +233,7 @@
                     <span id="star-${s}" onclick="togglePin('${s}')" class="star-btn ${pinnedSymbols.has(s) ? 'star-active' : 'star-inactive'}">${pinnedSymbols.has(s) ? '★' : '☆'}</span>
                     <span class="text-lg font-black italic text-white tracking-tighter">${s.replace('USDT','')}</span>
                 </div>
-                <span class="text-[9px] font-bold ${p > data.poc ? 'text-emerald-500' : 'text-red-500'} uppercase">${p > data.poc ? 'Above POC' : 'Below POC'}</span>
+                <span class="text-[9px] font-bold ${p > data.poc ? 'text-blue-400' : 'text-red-500'} uppercase">${p > data.poc ? 'Bullish POC' : 'Bearish POC'}</span>
             </div>
             <div class="win-gradient mb-4"><div class="pointer" style="left: ${winPos}%"></div></div>
             <div class="oi-grid">
@@ -237,11 +243,11 @@
                 <div class="oi-item"><span class="text-[8px] text-zinc-600 block">4H</span><span class="${getOIColor(data.oi.h4)}">${data.oi.h4}%</span></div>
             </div>
             <div class="poc-line flex justify-between">
-                <span>POC (籌碼密集)</span>
-                <span class="text-yellow-500 font-bold">${data.poc.toFixed(4)}</span>
+                <span>POC Target</span>
+                <span class="text-blue-400 font-bold">${data.poc.toFixed(4)}</span>
             </div>
             <div class="mt-2 flex justify-between items-center text-[9px] font-bold text-zinc-500 uppercase">
-                <span>Vol Ratio: ${r.toFixed(2)}x</span>
+                <span>Vol: ${r.toFixed(2)}x</span>
                 <span class="text-zinc-400">$${p}</span>
             </div>
         `;
@@ -251,12 +257,12 @@
         if (pinnedSymbols.has(s)) pinnedSymbols.delete(s);
         else pinnedSymbols.add(s);
         localStorage.setItem('trident_pinned', JSON.stringify([...pinnedSymbols]));
-        location.reload(); // 為了重新排序，定選後重置最簡單
+        location.reload(); 
     }
 
     async function handleSearch(e) {
         if (e.key === 'Enter') {
-            const s = e.target.value.toUpperCase();
+            const s = e.target.value.toUpperCase().trim();
             const symbol = s.endsWith('USDT') ? s : s + 'USDT';
             await initSymbol(symbol);
             e.target.value = "";
