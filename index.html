@@ -2,111 +2,136 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ TRIDENT V38 | 監控控制台修復</title>
+    <title>⚡ TRIDENT V42 | POC & PIN 終極版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap');
         body { background: #050505; color: #d4d4d8; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
-        .win-gradient { background: linear-gradient(90deg, #ef4444 0%, #18181b 50%, #22c55e 100%); height: 8px; border-radius: 4px; position: relative; border: 1px solid #222; }
-        .pointer { width: 4px; height: 18px; background: #fff; position: absolute; top: -5px; box-shadow: 0 0 12px #fff; transition: left 0.3s ease; z-index: 50; }
-        .card-stat { background: #0f0f11; border: 1px solid #1f1f23; position: relative; }
+        .win-gradient { background: linear-gradient(90deg, #ef4444 0%, #18181b 50%, #22c55e 100%); height: 8px; border-radius: 4px; position: relative; }
+        .pointer { width: 4px; height: 18px; background: #fff; position: absolute; top: -5px; box-shadow: 0 0 12px #fff; transition: left 0.3s ease; }
+        .card-stat { background: #0f0f11; border: 1px solid #1f1f23; transition: transform 0.2s; }
+        .card-stat:hover { border-color: #3f3f46; }
         .liq-alert { border: 2px solid #ef4444 !important; background: #210808 !important; animation: blink 0.8s infinite; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-        .status-tag { font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
-        .tag-reentry { background: #4c1d95; color: #a78bfa; } 
-        .tag-vol-up { background: #064e3b; color: #34d399; } 
-        .tag-range { background: #27272a; color: #a1a1aa; }
         .oi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 8px; }
         .oi-item { background: #161618; padding: 4px 0; border-radius: 3px; font-size: 9px; font-weight: bold; text-align: center; }
-        .oi-label { color: #52525b; font-size: 8px; display: block; }
         #alertLog { background: #0a0a0c; border-left: 1px solid #1f1f23; }
         .log-entry { border-bottom: 1px solid #1a1a1e; animation: slideIn 0.3s ease-out; }
-        @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .star-btn { cursor: pointer; font-size: 16px; transition: 0.2s; }
+        .star-active { color: #facc15; text-shadow: 0 0 8px #facc15; }
+        .star-inactive { color: #27272a; }
+        .poc-line { color: #facc15; font-size: 9px; border-top: 1px dashed #333; margin-top: 8px; padding-top: 4px; }
     </style>
 </head>
 <body class="p-6 h-screen flex flex-col">
 
     <header class="flex justify-between items-center border-b border-zinc-800 pb-4 mb-6">
-        <div class="flex items-center gap-4">
-            <div>
-                <h1 class="text-xl font-black italic text-white tracking-tighter">TRIDENT <span class="text-red-600">V38</span></h1>
-                <p id="status" class="text-[10px] text-zinc-500 font-bold uppercase">系統就緒 | 控制台模式</p>
-            </div>
+        <div class="flex items-center gap-6">
+            <h1 class="text-2xl font-black italic text-white tracking-tighter">TRIDENT <span class="text-yellow-500">V42</span></h1>
+            <input type="text" id="searchInput" onkeypress="handleSearch(event)" placeholder="搜尋並定選 (例: PEPE)..." 
+                class="bg-zinc-900 border border-zinc-700 text-xs px-3 py-2 rounded w-64 outline-none focus:border-yellow-500 text-white uppercase">
         </div>
-
-        <div class="flex items-center gap-3 bg-zinc-900/50 p-2 rounded-lg border border-zinc-800">
-            <input type="text" id="searchInput" placeholder="搜尋幣種..." 
-                class="bg-black border border-zinc-700 text-xs px-3 py-2 rounded w-32 outline-none focus:border-red-600 text-white uppercase">
-            
-            <div class="h-6 w-[1px] bg-zinc-800 mx-1"></div>
-            
-            <button id="startBtn" onclick="ignite()" class="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 font-black rounded text-[10px] uppercase transition-all">啟動</button>
-            <button id="pauseBtn" onclick="togglePause()" class="hidden bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 font-black rounded text-[10px] uppercase transition-all">暫停</button>
-            <button onclick="location.reload()" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 font-black rounded text-[10px] uppercase transition-all">重置系統</button>
+        <div class="flex gap-3">
+            <button id="startBtn" onclick="ignite()" class="bg-red-700 hover:bg-red-600 text-white px-6 py-2 font-black rounded text-xs uppercase shadow-lg">啟動監控</button>
+            <button onclick="location.reload()" class="bg-zinc-800 text-zinc-300 px-6 py-2 font-black rounded text-xs uppercase">重置系統</button>
         </div>
     </header>
 
     <main class="flex flex-1 overflow-hidden gap-6">
-        <div id="monitorList" class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto pr-2"></div>
-        
-        <div id="alertLog" class="w-80 flex flex-col rounded-lg border border-zinc-800">
-            <div class="bg-zinc-900 p-3 text-[10px] font-black uppercase text-zinc-400 border-b border-zinc-800 flex justify-between">
-                <span>Alert History</span>
-                <button onclick="clearLog()" class="text-red-500 hover:text-red-400 text-[9px]">Clear All</button>
-            </div>
-            <div id="logContent" class="flex-1 overflow-y-auto p-2 space-y-2">
-                <p class="text-[9px] text-zinc-600 italic text-center mt-10 uppercase tracking-widest">Awaiting Signals...</p>
-            </div>
+        <div id="monitorList" class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2"></div>
+        <div id="alertLog" class="w-80 flex flex-col border border-zinc-800 rounded-lg">
+            <div class="bg-zinc-900 p-3 text-[10px] font-black text-yellow-500 border-b border-zinc-800 uppercase">POC Breakout Log</div>
+            <div id="logContent" class="flex-1 overflow-y-auto p-2 space-y-2"></div>
         </div>
     </main>
 
 <script>
-    const EXCLUDE = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT', 'USDCUSDT', 'FDUSDUSDT'];
+    const EXCLUDE = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'LINKUSDT', 'AVAXUSDT', 'MATICUSDT', 'XAUUSDT', 'XAGUSDT', 'USDCUSDT', 'FDUSDUSDT'];
     let marketData = {};
     let loggedAlerts = new Set();
-    let isPaused = false;
-    let ws = null;
+    // 從本地存儲加載定選名單
+    let pinnedSymbols = new Set(JSON.parse(localStorage.getItem('trident_pinned')) || []);
 
-    function togglePause() {
-        isPaused = !isPaused;
-        const btn = document.getElementById('pauseBtn');
-        const status = document.getElementById('status');
-        if (isPaused) {
-            btn.innerText = "恢復";
-            btn.classList.replace('bg-amber-700', 'bg-blue-700');
-            status.innerText = "系統已暫停 - 數據鎖定中";
+    function togglePin(s) {
+        if (pinnedSymbols.has(s)) {
+            pinnedSymbols.delete(s);
         } else {
-            btn.innerText = "暫停";
-            btn.classList.replace('bg-blue-700', 'bg-amber-700');
-            status.innerText = "實時監控中";
+            pinnedSymbols.add(s);
+        }
+        localStorage.setItem('trident_pinned', JSON.stringify([...pinnedSymbols]));
+        // 觸發重新排列 UI (簡單做法是直接重繪該卡片或重排列表)
+        const el = document.getElementById(`card-${s}`);
+        if (el) {
+            if (pinnedSymbols.has(s)) {
+                document.getElementById('monitorList').prepend(el);
+            }
+            updatePinStyle(s);
         }
     }
 
-    function clearLog() {
-        document.getElementById('logContent').innerHTML = "";
-        loggedAlerts.clear();
+    function updatePinStyle(s) {
+        const star = document.getElementById(`star-${s}`);
+        if (star) {
+            star.className = `star-btn ${pinnedSymbols.has(s) ? 'star-active' : 'star-inactive'}`;
+            star.innerText = pinnedSymbols.has(s) ? '★' : '☆';
+        }
     }
 
-    function addLogEntry(s, price, ratio) {
-        if (loggedAlerts.has(s)) return;
-        loggedAlerts.add(s);
-        const logContent = document.getElementById('logContent');
-        if (logContent.querySelector('p')) logContent.innerHTML = "";
-        
-        const div = document.createElement('div');
-        div.className = "log-entry p-3 bg-zinc-950 rounded border-l-2 border-red-600 mb-2";
-        div.innerHTML = `
-            <div class="flex justify-between font-black text-[11px]">
-                <span class="text-white">${s.replace('USDT','')}</span>
-                <span class="text-red-500">BREAKOUT</span>
-            </div>
-            <div class="text-[9px] text-zinc-500 mt-1">Price: $${price} | Vol: ${ratio.toFixed(2)}x</div>
-        `;
-        logContent.prepend(div);
+    function calculatePOC(klines) {
+        let priceBins = {};
+        const allPrices = klines.map(k => parseFloat(k[4]));
+        const minP = Math.min(...allPrices);
+        const maxP = Math.max(...allPrices);
+        let step = (maxP - minP) / 20;
+        if (step === 0) step = 0.0001;
+
+        klines.forEach(k => {
+            const price = parseFloat(k[4]);
+            const vol = parseFloat(k[5]);
+            const bin = Math.floor((price - minP) / step) * step + minP;
+            priceBins[bin] = (priceBins[bin] || 0) + vol;
+        });
+
+        let pocPrice = minP;
+        let maxVol = 0;
+        for (let bin in priceBins) {
+            if (priceBins[bin] > maxVol) {
+                maxVol = priceBins[bin];
+                pocPrice = parseFloat(bin);
+            }
+        }
+        return pocPrice;
+    }
+
+    async function handleSearch(e) {
+        if (e.key === 'Enter') {
+            const s = e.target.value.toUpperCase();
+            const symbol = s.endsWith('USDT') ? s : s + 'USDT';
+            await initSymbol(symbol);
+            e.target.value = "";
+        }
+    }
+
+    async function initSymbol(s) {
+        try {
+            const [k, oi] = await Promise.all([
+                fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r=>r.json()),
+                getOIStats(s)
+            ]);
+            const lows = k.map(x => parseFloat(x[3]));
+            marketData[s] = {
+                support: Math.min(...lows),
+                poc: calculatePOC(k),
+                avgVol: k.reduce((a,b)=>a+parseFloat(b[5]), 0) / k.length,
+                oi: oi,
+                ratioHistory: [],
+                lastPrice: parseFloat(k[k.length-1][4])
+            };
+        } catch(e) {}
     }
 
     async function getOIStats(s) {
-        const fetchOI = (p) => fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s.toUpperCase()}&period=${p}&limit=2`).then(r => r.json());
+        const fetchOI = (p) => fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=${p}&limit=2`).then(r => r.json());
         try {
             const [m5, m15, h1, h4] = await Promise.all([fetchOI('5m'), fetchOI('15m'), fetchOI('1h'), fetchOI('4h')]);
             const calc = (d) => (d && d.length > 1) ? ((parseFloat(d[1].sumOpenInterest) - parseFloat(d[0].sumOpenInterest)) / parseFloat(d[0].sumOpenInterest) * 100).toFixed(2) : "0.00";
@@ -116,71 +141,47 @@
 
     async function ignite() {
         document.getElementById('startBtn').classList.add('hidden');
-        document.getElementById('pauseBtn').classList.remove('hidden');
-        const statusMsg = document.getElementById('status');
-        
         const tickers = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json());
-        const targets = tickers.filter(t => t.symbol.endsWith('USDT') && !EXCLUDE.includes(t.symbol)).sort((a,b) => b.quoteVolume - a.quoteVolume).slice(0, 48);
-
-        for (let t of targets) {
-            statusMsg.innerText = `SYNCING: ${t.symbol}`;
-            try {
-                const k = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${t.symbol}&interval=15m&limit=50`).then(r=>r.json());
-                const lows = k.map(x => parseFloat(x[3]));
-                const oi = await getOIStats(t.symbol);
-                marketData[t.symbol] = {
-                    support: Math.min(...lows),
-                    avgVol: k.reduce((a,b)=>a+parseFloat(b[5]), 0) / k.length,
-                    oi: oi,
-                    ratioHistory: [],
-                    lastPrice: parseFloat(t.lastPrice)
-                };
-            } catch(e) {}
-        }
-        statusMsg.innerText = "實時監控中";
+        const targets = tickers.filter(t => t.symbol.endsWith('USDT') && !EXCLUDE.includes(t.symbol)).sort((a,b) => b.quoteVolume - a.quoteVolume).slice(0, 40);
+        
+        // 合併定選幣種到初始化名單
+        const finalTargets = new Set([...pinnedSymbols, ...targets.map(t => t.symbol)]);
+        for (let s of finalTargets) await initSymbol(s);
+        
         startWS();
     }
 
     function startWS() {
-        ws = new WebSocket('wss://fstream.binance.com/ws/!ticker@arr');
+        const ws = new WebSocket('wss://fstream.binance.com/ws/!ticker@arr');
         ws.onmessage = (e) => {
-            if (isPaused) return; // 暫停邏輯
-            
-            const searchVal = document.getElementById('searchInput').value.toUpperCase();
             JSON.parse(e.data).forEach(m => {
                 const base = marketData[m.s];
                 if (!base) return;
 
                 const price = parseFloat(m.c);
                 const volRatio = ((parseFloat(m.q) / 1440) * 15) / base.avgVol;
-                base.ratioHistory.push(volRatio);
-                if(base.ratioHistory.length > 10) base.ratioHistory.shift();
-                
-                let trend = "盤整"; let tClass = "tag-range";
-                let winRate = 50 + ((price - base.lastPrice) / base.lastPrice * 2000);
+                let winRate = 50 + ((price - base.lastPrice) / base.lastPrice * 3000);
 
-                if (volRatio > 1.4) { trend = "持續放量"; tClass = "tag-vol-up"; }
-                if (volRatio > 2.0) { trend = "二次趨勢反轉"; tClass = "tag-reentry"; }
-
-                const isBreak = price < base.support;
-                if (isBreak && volRatio > 1.8) addLogEntry(m.s, price, volRatio);
-
-                if (searchVal && m.s.includes(searchVal) || volRatio > 1.2 || isBreak) {
-                    updateUI(m.s, price, volRatio, isBreak && volRatio > 1.8, base, trend, tClass, winRate);
-                } else {
-                    const el = document.getElementById(`card-${m.s}`);
-                    if(el) el.remove();
+                if (price < base.poc && volRatio > 2.0 && !loggedAlerts.has(m.s)) {
+                    loggedAlerts.add(m.s);
+                    const div = document.createElement('div');
+                    div.className = "log-entry p-3 bg-zinc-950 rounded border-l-2 border-yellow-600 mb-2";
+                    div.innerHTML = `<div class="flex justify-between font-black text-xs text-yellow-500"><span>${m.s}</span><span>POC 失守</span></div>
+                                     <div class="text-[8px] text-zinc-500 mt-1">$${price} | Vol: ${volRatio.toFixed(2)}x</div>`;
+                    document.getElementById('logContent').prepend(div);
                 }
+                updateUI(m.s, price, volRatio, (price < base.poc && volRatio > 2.0), base, winRate);
             });
         };
     }
 
-    function updateUI(s, p, r, alert, data, trend, tClass, winRate) {
+    function updateUI(s, p, r, alert, data, winRate) {
         let el = document.getElementById(`card-${s}`);
         if (!el) {
-            el = document.createElement('div');
-            el.id = `card-${s}`;
-            document.getElementById('monitorList').prepend(el);
+            el = document.createElement('div'); el.id = `card-${s}`;
+            // 如果是定選幣，直接置頂
+            if (pinnedSymbols.has(s)) document.getElementById('monitorList').prepend(el);
+            else document.getElementById('monitorList').appendChild(el);
         }
         
         const winPos = Math.max(5, Math.min(95, winRate));
@@ -189,20 +190,26 @@
 
         el.innerHTML = `
             <div class="flex justify-between items-start mb-2">
-                <span class="text-xl font-black italic text-white uppercase tracking-tighter">${s.replace('USDT','')}</span>
-                <span class="status-tag ${tClass}">${trend}</span>
+                <div class="flex items-center gap-2">
+                    <span id="star-${s}" onclick="togglePin('${s}')" class="star-btn ${pinnedSymbols.has(s) ? 'star-active' : 'star-inactive'}">${pinnedSymbols.has(s) ? '★' : '☆'}</span>
+                    <span class="text-lg font-black italic text-white tracking-tighter">${s.replace('USDT','')}</span>
+                </div>
+                <span class="text-[9px] font-bold ${p > data.poc ? 'text-emerald-500' : 'text-red-500'} uppercase">${p > data.poc ? 'Above POC' : 'Below POC'}</span>
             </div>
-            <div class="text-[10px] text-zinc-500 mb-2 font-bold uppercase">VOL: ${r.toFixed(2)}x | $${p}</div>
             <div class="win-gradient mb-4"><div class="pointer" style="left: ${winPos}%"></div></div>
             <div class="oi-grid">
-                <div class="oi-item"><span class="oi-label text-zinc-600">5M</span><span class="${getOIColor(data.oi.m5)}">${data.oi.m5}%</span></div>
-                <div class="oi-item"><span class="oi-label text-zinc-600">15M</span><span class="${getOIColor(data.oi.m15)}">${data.oi.m15}%</span></div>
-                <div class="oi-item"><span class="oi-label text-zinc-600">1H</span><span class="${getOIColor(data.oi.h1)}">${data.oi.h1}%</span></div>
-                <div class="oi-item"><span class="oi-label text-zinc-600">4H</span><span class="${getOIColor(data.oi.h4)}">${data.oi.h4}%</span></div>
+                <div class="oi-item"><span class="text-[8px] text-zinc-600 block">5M</span><span class="${getOIColor(data.oi.m5)}">${data.oi.m5}%</span></div>
+                <div class="oi-item"><span class="text-[8px] text-zinc-600 block">15M</span><span class="${getOIColor(data.oi.m15)}">${data.oi.m15}%</span></div>
+                <div class="oi-item"><span class="text-[8px] text-zinc-600 block">1H</span><span class="${getOIColor(data.oi.h1)}">${data.oi.h1}%</span></div>
+                <div class="oi-item"><span class="text-[8px] text-zinc-600 block">4H</span><span class="${getOIColor(data.oi.h4)}">${data.oi.h4}%</span></div>
             </div>
-            <div class="mt-4 flex justify-between items-center text-[9px] font-bold">
-                <span class="text-zinc-600 tracking-widest uppercase">Support (50K)</span>
-                <span class="${p < data.support ? 'text-red-500' : 'text-zinc-400'}">${data.support.toFixed(4)}</span>
+            <div class="poc-line flex justify-between">
+                <span>POC (籌碼密集)</span>
+                <span class="text-yellow-500 font-bold">${data.poc.toFixed(4)}</span>
+            </div>
+            <div class="mt-2 flex justify-between items-center text-[9px] font-bold text-zinc-500 uppercase">
+                <span>15M Support</span>
+                <span>${data.support.toFixed(4)}</span>
             </div>
         `;
     }
