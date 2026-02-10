@@ -2,45 +2,61 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>⚡ TRIDENT V42 | POC & PIN 終極版</title>
+    <title>⚡ TRIDENT V42 | 自動刷新增強版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap');
         body { background: #050505; color: #d4d4d8; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
         .win-gradient { background: linear-gradient(90deg, #ef4444 0%, #18181b 50%, #22c55e 100%); height: 8px; border-radius: 4px; position: relative; }
         .pointer { width: 4px; height: 18px; background: #fff; position: absolute; top: -5px; box-shadow: 0 0 12px #fff; transition: left 0.3s ease; }
-        .card-stat { background: #0f0f11; border: 1px solid #1f1f23; transition: transform 0.2s; }
-        .card-stat:hover { border-color: #3f3f46; }
+        .card-stat { background: #0f0f11; border: 1px solid #1f1f23; transition: all 0.3s; }
+        .card-stat:hover { border-color: #3f3f46; background: #121215; }
         .liq-alert { border: 2px solid #ef4444 !important; background: #210808 !important; animation: blink 0.8s infinite; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         .oi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 8px; }
         .oi-item { background: #161618; padding: 4px 0; border-radius: 3px; font-size: 9px; font-weight: bold; text-align: center; }
         #alertLog { background: #0a0a0c; border-left: 1px solid #1f1f23; }
         .log-entry { border-bottom: 1px solid #1a1a1e; animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .star-btn { cursor: pointer; font-size: 16px; transition: 0.2s; }
         .star-active { color: #facc15; text-shadow: 0 0 8px #facc15; }
         .star-inactive { color: #27272a; }
         .poc-line { color: #facc15; font-size: 9px; border-top: 1px dashed #333; margin-top: 8px; padding-top: 4px; }
+        /* 進度條動畫 */
+        .refresh-bar { height: 2px; background: #eab308; width: 0%; transition: width 0.1s linear; }
     </style>
 </head>
 <body class="p-6 h-screen flex flex-col">
 
-    <header class="flex justify-between items-center border-b border-zinc-800 pb-4 mb-6">
+    <header class="flex justify-between items-center border-b border-zinc-800 pb-4 mb-2">
         <div class="flex items-center gap-6">
             <h1 class="text-2xl font-black italic text-white tracking-tighter">TRIDENT <span class="text-yellow-500">V42</span></h1>
-            <input type="text" id="searchInput" onkeypress="handleSearch(event)" placeholder="搜尋並定選 (例: PEPE)..." 
+            <input type="text" id="searchInput" onkeypress="handleSearch(event)" placeholder="搜尋幣種 (例: PEPE)..." 
                 class="bg-zinc-900 border border-zinc-700 text-xs px-3 py-2 rounded w-64 outline-none focus:border-yellow-500 text-white uppercase">
         </div>
-        <div class="flex gap-3">
-            <button id="startBtn" onclick="ignite()" class="bg-red-700 hover:bg-red-600 text-white px-6 py-2 font-black rounded text-xs uppercase shadow-lg">啟動監控</button>
-            <button onclick="location.reload()" class="bg-zinc-800 text-zinc-300 px-6 py-2 font-black rounded text-xs uppercase">重置系統</button>
+        <div class="flex items-center gap-6">
+            <div class="text-right">
+                <div class="text-[10px] text-zinc-500 mb-1 uppercase font-bold">Data Auto-Sync (5s)</div>
+                <div class="w-32 bg-zinc-800 rounded-full overflow-hidden">
+                    <div id="refreshProgress" class="refresh-bar"></div>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button id="startBtn" onclick="ignite()" class="bg-yellow-600 hover:bg-yellow-500 text-black px-6 py-2 font-black rounded text-xs uppercase shadow-lg transition-colors">啟動監控系統</button>
+                <button onclick="location.reload()" class="bg-zinc-800 text-zinc-300 px-6 py-2 font-black rounded text-xs uppercase hover:bg-zinc-700">重置</button>
+            </div>
         </div>
     </header>
 
     <main class="flex flex-1 overflow-hidden gap-6">
-        <div id="monitorList" class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2"></div>
-        <div id="alertLog" class="w-80 flex flex-col border border-zinc-800 rounded-lg">
-            <div class="bg-zinc-900 p-3 text-[10px] font-black text-yellow-500 border-b border-zinc-800 uppercase">POC Breakout Log</div>
+        <div id="monitorList" class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2">
+            <div class="col-span-full flex items-center justify-center text-zinc-600 italic text-sm">點擊「啟動監控系統」開始掃描市場數據...</div>
+        </div>
+        <div id="alertLog" class="w-80 flex flex-col border border-zinc-800 rounded-lg shadow-2xl">
+            <div class="bg-zinc-900 p-3 text-[10px] font-black text-yellow-500 border-b border-zinc-800 uppercase flex justify-between">
+                <span>POC Breakout Log</span>
+                <span id="logCount" class="text-zinc-600">0</span>
+            </div>
             <div id="logContent" class="flex-1 overflow-y-auto p-2 space-y-2"></div>
         </div>
     </main>
@@ -49,32 +65,79 @@
     const EXCLUDE = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'LINKUSDT', 'AVAXUSDT', 'MATICUSDT', 'XAUUSDT', 'XAGUSDT', 'USDCUSDT', 'FDUSDUSDT'];
     let marketData = {};
     let loggedAlerts = new Set();
-    // 從本地存儲加載定選名單
     let pinnedSymbols = new Set(JSON.parse(localStorage.getItem('trident_pinned')) || []);
+    let isRunning = false;
+    let countdownSec = 0;
 
-    function togglePin(s) {
-        if (pinnedSymbols.has(s)) {
-            pinnedSymbols.delete(s);
-        } else {
-            pinnedSymbols.add(s);
-        }
-        localStorage.setItem('trident_pinned', JSON.stringify([...pinnedSymbols]));
-        // 觸發重新排列 UI (簡單做法是直接重繪該卡片或重排列表)
-        const el = document.getElementById(`card-${s}`);
-        if (el) {
-            if (pinnedSymbols.has(s)) {
-                document.getElementById('monitorList').prepend(el);
-            }
-            updatePinStyle(s);
+    // --- 核心邏輯 ---
+
+    async function ignite() {
+        if(isRunning) return;
+        isRunning = true;
+        document.getElementById('startBtn').innerText = "系統運行中...";
+        document.getElementById('startBtn').classList.replace('bg-yellow-600', 'bg-zinc-800');
+        document.getElementById('startBtn').classList.add('text-zinc-500');
+
+        await refreshAllData(); // 第一次強制抓取
+        startWS();             // 啟動價格串流
+        startAutoRefresh();    // 啟動 5s 定時器
+    }
+
+    async function refreshAllData() {
+        try {
+            const tickers = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json());
+            const targets = tickers
+                .filter(t => t.symbol.endsWith('USDT') && !EXCLUDE.includes(t.symbol))
+                .sort((a,b) => b.quoteVolume - a.quoteVolume)
+                .slice(0, 36); // 監控前 36 名
+
+            const finalTargets = new Set([...pinnedSymbols, ...targets.map(t => t.symbol)]);
+            
+            // 為了避免觸發 API 限制，使用 Promise.all 併發處理
+            await Promise.allSettled([...finalTargets].map(s => initSymbol(s)));
+            console.log("市場數據已同步完成");
+        } catch (e) {
+            console.error("刷新失敗:", e);
         }
     }
 
-    function updatePinStyle(s) {
-        const star = document.getElementById(`star-${s}`);
-        if (star) {
-            star.className = `star-btn ${pinnedSymbols.has(s) ? 'star-active' : 'star-inactive'}`;
-            star.innerText = pinnedSymbols.has(s) ? '★' : '☆';
-        }
+    function startAutoRefresh() {
+        const interval = 5000; // 5秒
+        const step = 100;      // 0.1秒更新一次進度條
+        let elapsed = 0;
+
+        setInterval(() => {
+            elapsed += step;
+            let percent = (elapsed / interval) * 100;
+            document.getElementById('refreshProgress').style.width = percent + '%';
+
+            if (elapsed >= interval) {
+                elapsed = 0;
+                refreshAllData(); // 每 5 秒重新計算一次 POC 與 OI
+            }
+        }, step);
+    }
+
+    // --- 數據處理 ---
+
+    async function initSymbol(s) {
+        try {
+            const [k, oi] = await Promise.all([
+                fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r=>r.json()),
+                getOIStats(s)
+            ]);
+            
+            const lows = k.map(x => parseFloat(x[3]));
+            const currentK = k[k.length-1];
+
+            marketData[s] = {
+                support: Math.min(...lows),
+                poc: calculatePOC(k),
+                avgVol: k.reduce((a,b)=>a+parseFloat(b[5]), 0) / k.length,
+                oi: oi,
+                lastPrice: parseFloat(currentK[4])
+            };
+        } catch(e) {}
     }
 
     function calculatePOC(klines) {
@@ -103,33 +166,6 @@
         return pocPrice;
     }
 
-    async function handleSearch(e) {
-        if (e.key === 'Enter') {
-            const s = e.target.value.toUpperCase();
-            const symbol = s.endsWith('USDT') ? s : s + 'USDT';
-            await initSymbol(symbol);
-            e.target.value = "";
-        }
-    }
-
-    async function initSymbol(s) {
-        try {
-            const [k, oi] = await Promise.all([
-                fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=15m&limit=100`).then(r=>r.json()),
-                getOIStats(s)
-            ]);
-            const lows = k.map(x => parseFloat(x[3]));
-            marketData[s] = {
-                support: Math.min(...lows),
-                poc: calculatePOC(k),
-                avgVol: k.reduce((a,b)=>a+parseFloat(b[5]), 0) / k.length,
-                oi: oi,
-                ratioHistory: [],
-                lastPrice: parseFloat(k[k.length-1][4])
-            };
-        } catch(e) {}
-    }
-
     async function getOIStats(s) {
         const fetchOI = (p) => fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${s}&period=${p}&limit=2`).then(r => r.json());
         try {
@@ -139,17 +175,7 @@
         } catch(e) { return { m5: "0.00", m15: "0.00", h1: "0.00", h4: "0.00" }; }
     }
 
-    async function ignite() {
-        document.getElementById('startBtn').classList.add('hidden');
-        const tickers = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json());
-        const targets = tickers.filter(t => t.symbol.endsWith('USDT') && !EXCLUDE.includes(t.symbol)).sort((a,b) => b.quoteVolume - a.quoteVolume).slice(0, 40);
-        
-        // 合併定選幣種到初始化名單
-        const finalTargets = new Set([...pinnedSymbols, ...targets.map(t => t.symbol)]);
-        for (let s of finalTargets) await initSymbol(s);
-        
-        startWS();
-    }
+    // --- 介面與通訊 ---
 
     function startWS() {
         const ws = new WebSocket('wss://fstream.binance.com/ws/!ticker@arr');
@@ -163,25 +189,32 @@
                 let winRate = 50 + ((price - base.lastPrice) / base.lastPrice * 3000);
 
                 if (price < base.poc && volRatio > 2.0 && !loggedAlerts.has(m.s)) {
-                    loggedAlerts.add(m.s);
-                    const div = document.createElement('div');
-                    div.className = "log-entry p-3 bg-zinc-950 rounded border-l-2 border-yellow-600 mb-2";
-                    div.innerHTML = `<div class="flex justify-between font-black text-xs text-yellow-500"><span>${m.s}</span><span>POC 失守</span></div>
-                                     <div class="text-[8px] text-zinc-500 mt-1">$${price} | Vol: ${volRatio.toFixed(2)}x</div>`;
-                    document.getElementById('logContent').prepend(div);
+                    addAlertLog(m.s, price, volRatio);
                 }
                 updateUI(m.s, price, volRatio, (price < base.poc && volRatio > 2.0), base, winRate);
             });
         };
     }
 
+    function addAlertLog(symbol, price, vol) {
+        loggedAlerts.add(symbol);
+        const logContent = document.getElementById('logContent');
+        const div = document.createElement('div');
+        div.className = "log-entry p-3 bg-zinc-950 rounded border-l-2 border-red-600 mb-2";
+        div.innerHTML = `
+            <div class="flex justify-between font-black text-xs text-red-500"><span>${symbol}</span><span>⚠️ POC 失守</span></div>
+            <div class="text-[8px] text-zinc-500 mt-1">$${price} | 放量: ${vol.toFixed(2)}x</div>`;
+        logContent.prepend(div);
+        document.getElementById('logCount').innerText = loggedAlerts.size;
+    }
+
     function updateUI(s, p, r, alert, data, winRate) {
         let el = document.getElementById(`card-${s}`);
         if (!el) {
             el = document.createElement('div'); el.id = `card-${s}`;
-            // 如果是定選幣，直接置頂
-            if (pinnedSymbols.has(s)) document.getElementById('monitorList').prepend(el);
-            else document.getElementById('monitorList').appendChild(el);
+            const container = document.getElementById('monitorList');
+            if (pinnedSymbols.has(s)) container.prepend(el);
+            else container.appendChild(el);
         }
         
         const winPos = Math.max(5, Math.min(95, winRate));
@@ -208,10 +241,26 @@
                 <span class="text-yellow-500 font-bold">${data.poc.toFixed(4)}</span>
             </div>
             <div class="mt-2 flex justify-between items-center text-[9px] font-bold text-zinc-500 uppercase">
-                <span>15M Support</span>
-                <span>${data.support.toFixed(4)}</span>
+                <span>Vol Ratio: ${r.toFixed(2)}x</span>
+                <span class="text-zinc-400">$${p}</span>
             </div>
         `;
+    }
+
+    function togglePin(s) {
+        if (pinnedSymbols.has(s)) pinnedSymbols.delete(s);
+        else pinnedSymbols.add(s);
+        localStorage.setItem('trident_pinned', JSON.stringify([...pinnedSymbols]));
+        location.reload(); // 為了重新排序，定選後重置最簡單
+    }
+
+    async function handleSearch(e) {
+        if (e.key === 'Enter') {
+            const s = e.target.value.toUpperCase();
+            const symbol = s.endsWith('USDT') ? s : s + 'USDT';
+            await initSymbol(symbol);
+            e.target.value = "";
+        }
     }
 </script>
 </body>
